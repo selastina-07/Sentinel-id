@@ -1,0 +1,161 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ThemePreference {
+  LIGHT
+  DARK
+}
+
+enum AuditOutcome {
+  SUCCESS
+  FAILURE
+  CHALLENGE
+  BLOCKED
+}
+
+enum AuditReason {
+  REGISTRATION
+  LOGIN_SUCCESS
+  FAILED_PASSWORD
+  OTP_REQUIRED
+  OTP_ISSUED
+  OTP_DELIVERY_FAILED
+  OTP_FAILED
+  OTP_VERIFIED
+  TRUST_CREATED
+  TRUST_REVOKED
+  SESSION_REVOKED
+  PASSWORD_RATE_LIMIT
+  OTP_RATE_LIMIT
+}
+
+model User {
+  id                String           @id @default(cuid())
+  email             String           @unique
+  displayName       String
+  passwordHash      String
+  theme             ThemePreference  @default(DARK)
+  themeManuallySet  Boolean          @default(false)
+  timezone          String           @default("Asia/Kolkata")
+  emailVerifiedAt   DateTime?        @db.Timestamptz(3)
+  createdAt         DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime         @updatedAt @db.Timestamptz(3)
+  sessions          Session[]
+  otpChallenges     OtpChallenge[]
+  trustedDevices    TrustedDevice[]
+  auditEvents       AuditEvent[]
+
+  @@index([createdAt])
+}
+
+model Session {
+  id             String    @id @default(cuid())
+  tokenHash      String    @unique
+  userId         String
+  ipAddress      String?
+  userAgent      String?
+  browser        String?
+  operatingSystem String?
+  deviceCategory String?
+  city           String?
+  region         String?
+  country        String?
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  lastSeenAt     DateTime  @default(now()) @db.Timestamptz(3)
+  expiresAt      DateTime  @db.Timestamptz(3)
+  revokedAt      DateTime? @db.Timestamptz(3)
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  auditEvents    AuditEvent[]
+
+  @@index([userId, revokedAt, expiresAt])
+  @@index([expiresAt])
+}
+
+model OtpChallenge {
+  id          String    @id @default(cuid())
+  userId      String
+  codeHash    String
+  riskReasons String[]
+  ipAddress   String?
+  userAgent   String?
+  browser     String?
+  operatingSystem String?
+  deviceCategory String?
+  deviceModel String?
+  city        String?
+  region      String?
+  country     String?
+  attempts    Int       @default(0)
+  expiresAt   DateTime  @db.Timestamptz(3)
+  consumedAt  DateTime? @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([expiresAt, consumedAt])
+}
+
+model TrustedDevice {
+  id              String    @id @default(cuid())
+  tokenHash       String    @unique
+  userId          String
+  label           String
+  browser         String?
+  operatingSystem String?
+  deviceCategory  String?
+  ipAddress       String?
+  city            String?
+  region          String?
+  country         String?
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+  lastSeenAt      DateTime  @default(now()) @db.Timestamptz(3)
+  expiresAt       DateTime  @db.Timestamptz(3)
+  revokedAt       DateTime? @db.Timestamptz(3)
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt, expiresAt])
+  @@index([expiresAt])
+}
+
+model AuditEvent {
+  id              String       @id @default(cuid())
+  userId          String?
+  emailHash       String?
+  sessionId       String?
+  trustedDeviceId String?
+  ipAddress       String?
+  userAgent       String?
+  browser         String?
+  operatingSystem String?
+  deviceCategory  String?
+  deviceModel     String?
+  city            String?
+  region          String?
+  country         String?
+  outcome         AuditOutcome
+  reason          AuditReason
+  trusted         Boolean      @default(false)
+  createdAt       DateTime     @default(now()) @db.Timestamptz(3)
+  user            User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  session         Session?     @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([ipAddress, createdAt])
+  @@index([emailHash, createdAt])
+  @@index([reason, createdAt])
+}
+
+model RateLimitBucket {
+  key             String   @id
+  count           Int      @default(0)
+  windowStartedAt DateTime @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([updatedAt])
+}
